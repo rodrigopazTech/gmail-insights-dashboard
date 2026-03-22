@@ -5,9 +5,24 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 // Categorization Logic
-const getCategory = (from: string, subject: string, labels: string[]) => {
+const getCategory = (from: string, subject: string, labels: string[], snippet: string) => {
   const fromLower = from.toLowerCase();
   const subjectLower = subject.toLowerCase();
+  const snippetLower = snippet.toLowerCase();
+
+  // Subscription/Payment detection
+  if (
+    subjectLower.includes('factura') || 
+    subjectLower.includes('recibo') || 
+    subjectLower.includes('invoice') || 
+    subjectLower.includes('receipt') || 
+    subjectLower.includes('pago exitoso') ||
+    snippetLower.includes('suscription') ||
+    snippetLower.includes('suscripción') ||
+    snippetLower.includes('pago mensual')
+  ) {
+    return 'Subscription';
+  }
 
   if (fromLower.includes('aliexpress') || fromLower.includes('undostres') || fromLower.includes('amazon') || subjectLower.includes('compra') || subjectLower.includes('order')) {
     return 'Orders';
@@ -25,6 +40,12 @@ const getCategory = (from: string, subject: string, labels: string[]) => {
     return 'Social';
   }
   return 'Other';
+};
+
+// Helper to extract amount from snippet
+const extractAmount = (text: string) => {
+  const match = text.match(/\$\s?(\d+(?:\.\d+)?)/);
+  return match ? match[0] : null;
 };
 
 export async function GET() {
@@ -50,14 +71,17 @@ export async function GET() {
         const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
         const date = headers.find((h: any) => h.name === 'Date')?.value || '';
         const labels = emailData.labelIds || [];
-        const category = getCategory(from, subject, labels);
+        const category = getCategory(from, subject, labels, emailData.snippet);
+        const amount = extractAmount(emailData.snippet);
 
         return {
           id: msg.id,
+          threadId: emailData.threadId,
           from,
           subject,
           date,
           category,
+          amount,
           snippet: emailData.snippet,
           labels,
         };
@@ -70,6 +94,7 @@ export async function GET() {
 
     // 3. Aggregate statistics
     const summary: Record<string, number> = {
+      Subscription: 0,
       Orders: 0,
       Work: 0,
       Study: 0,
